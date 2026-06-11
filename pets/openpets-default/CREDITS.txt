@@ -1,0 +1,6 @@
+Sprite: default pet spritesheet from OpenPets
+https://github.com/alvinunreal/openpets
+Copyright (c) 2026 OpenPets — MIT License
+
+The MIT license text is included with the OpenPets repository; this sheet is
+redistributed here unmodified (assets/default-pet-spritesheet.webp).

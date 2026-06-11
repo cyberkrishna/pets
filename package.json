@@ -1,0 +1,65 @@
+{
+  "name": "agent-pet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A floating desktop pet that reacts to your active agent sessions and gives you updates.",
+  "author": "Agent Pet",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "icon": "node tools/make-icon.js",
+    "dist": "node tools/make-icon.js && electron-builder --win",
+    "dist:portable": "node tools/make-icon.js && electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "dev.agentpet.app",
+    "productName": "Agent Pet",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "pet.config.json"
+    ],
+    "extraResources": [
+      {
+        "from": "pets",
+        "to": "pets"
+      },
+      {
+        "from": "hooks",
+        "to": "integrations/hooks"
+      },
+      {
+        "from": "sdk",
+        "to": "integrations/sdk",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    }
+  }
+}

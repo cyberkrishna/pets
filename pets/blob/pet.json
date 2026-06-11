@@ -1,0 +1,47 @@
+{
+  "id": "blob",
+  "name": "Blobby",
+  "render": "sprite",
+  "sheet": "sheet.png",
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "scale": 4,
+  "placeholder": true,
+  "states": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "durationMs": 150
+    },
+    "review": {
+      "row": 1,
+      "frames": 4,
+      "durationMs": 150
+    },
+    "running": {
+      "row": 2,
+      "frames": 4,
+      "durationMs": 90
+    },
+    "waiting": {
+      "row": 3,
+      "frames": 4,
+      "durationMs": 150
+    },
+    "waving": {
+      "row": 4,
+      "frames": 4,
+      "durationMs": 150
+    },
+    "jumping": {
+      "row": 5,
+      "frames": 4,
+      "durationMs": 150
+    },
+    "failed": {
+      "row": 6,
+      "frames": 4,
+      "durationMs": 150
+    }
+  }
+}

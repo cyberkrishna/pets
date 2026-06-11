@@ -1,0 +1,1 @@
+Pixel Cat: original pixel art generated procedurally by tools/make-animals.js (this repo). No external assets.

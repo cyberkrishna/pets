@@ -1,0 +1,6 @@
+{
+  "id": "aura",
+  "name": "Aura (built-in)",
+  "render": "svg",
+  "builtIn": true
+}

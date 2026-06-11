@@ -1,0 +1,18 @@
+{
+  "port": 7331,
+
+  "_comment_logs": "Each entry watches one log file. When an appended line matches a rule's `match` regex (case-insensitive, first match wins), the pet reacts with that rule's status (running|done|error|idle). `agent` is the label shown on the status card. Use FORWARD slashes in paths (e.g. C:/Users/you/agent.log) — they work on Windows and need no escaping. Remove `_example: true` to activate an entry.",
+
+  "logs": [
+    {
+      "_example": true,
+      "file": "C:/Users/you/agent.log",
+      "agent": "my-agent",
+      "rules": [
+        { "match": "error|exception|traceback", "status": "error" },
+        { "match": "done|completed|finished|success", "status": "done" },
+        { "match": "running|started|calling|invoking", "status": "running" }
+      ]
+    }
+  ]
+}

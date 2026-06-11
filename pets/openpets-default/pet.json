@@ -1,0 +1,21 @@
+{
+  "id": "openpets-default",
+  "name": "OpenPets Pup",
+  "render": "sprite",
+  "sheet": "sheet.webp",
+  "frameWidth": 192,
+  "frameHeight": 208,
+  "scale": 0.72,
+  "smooth": true,
+  "states": {
+    "idle":          { "row": 0, "frames": 6, "durationMs": 917 },
+    "running-right": { "row": 1, "frames": 8, "durationMs": 132 },
+    "running-left":  { "row": 2, "frames": 8, "durationMs": 132 },
+    "waving":        { "row": 3, "frames": 4, "durationMs": 175, "iterations": 2 },
+    "jumping":       { "row": 4, "frames": 5, "durationMs": 168, "iterations": 2 },
+    "failed":        { "row": 5, "frames": 8, "durationMs": 152, "iterations": 2 },
+    "waiting":       { "row": 6, "frames": 6, "durationMs": 168 },
+    "running":       { "row": 7, "frames": 6, "durationMs": 137 },
+    "review":        { "row": 8, "frames": 6, "durationMs": 172 }
+  }
+}

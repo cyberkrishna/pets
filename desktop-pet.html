@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Pet</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Mono:wght@400;700&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none;}
+  body{width:100vw;height:100vh;background:#0f0f1a;font-family:'Nunito',sans-serif;overflow:hidden;cursor:default;}
+
+  .desktop{
+    width:100%;height:100%;
+    background:radial-gradient(ellipse at 20% 50%,rgba(88,28,255,.12) 0%,transparent 60%),
+               radial-gradient(ellipse at 80% 20%,rgba(0,200,150,.08) 0%,transparent 50%),#0f0f1a;
+    position:relative;
+  }
+  .desktop::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px);background-size:32px 32px;pointer-events:none;}
+
+  .hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,255,255,.18);letter-spacing:.08em;pointer-events:none;white-space:nowrap;}
+
+  /* ── Upload panel ── */
+  #upload-panel{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(15,15,26,.92);backdrop-filter:blur(12px);z-index:500;
+    flex-direction:column;gap:0;
+  }
+  .up-card{
+    background:rgba(255,255,255,.04);border:1.5px dashed rgba(108,99,255,.5);
+    border-radius:24px;padding:48px 56px;text-align:center;max-width:480px;width:90%;
+    transition:border-color .2s,background .2s;
+  }
+  .up-card.dragover{border-color:#6c63ff;background:rgba(108,99,255,.08);}
+  .up-icon{font-size:56px;margin-bottom:16px;display:block;animation:bob 2.5s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  .up-title{font-size:24px;font-weight:900;color:#fff;margin-bottom:8px;}
+  .up-sub{font-size:14px;color:rgba(255,255,255,.45);margin-bottom:28px;line-height:1.6;}
+  .up-btn{
+    display:inline-block;padding:12px 32px;border-radius:50px;
+    background:linear-gradient(135deg,#6c63ff,#a78bfa);color:#fff;
+    font-family:'Nunito',sans-serif;font-size:15px;font-weight:800;
+    cursor:pointer;border:none;transition:transform .15s,box-shadow .15s;
+    box-shadow:0 4px 24px rgba(108,99,255,.4);
+  }
+  .up-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(108,99,255,.55);}
+  .up-btn:active{transform:scale(.97);}
+  #file-input{display:none;}
+  .up-divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:rgba(255,255,255,.25);font-size:13px;}
+  .up-divider::before,.up-divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.1);}
+  .use-default-btn{
+    background:none;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);
+    font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;padding:10px 24px;
+    border-radius:50px;cursor:pointer;transition:all .2s;
+  }
+  .use-default-btn:hover{border-color:rgba(255,255,255,.35);color:rgba(255,255,255,.8);}
+
+  /* ── Generating overlay ── */
+  #gen-overlay{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(15,15,26,.95);z-index:600;flex-direction:column;gap:16px;
+  }
+  #gen-overlay.show{display:flex;}
+  .gen-spinner{width:56px;height:56px;border:3px solid rgba(108,99,255,.2);border-top-color:#6c63ff;border-radius:50%;animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .gen-label{font-family:'Space Mono',monospace;font-size:13px;color:rgba(255,255,255,.6);text-align:center;line-height:1.8;}
+  .gen-steps{font-size:11px;color:rgba(255,255,255,.3);}
+
+  /* ── Pet container ── */
+  #pet-wrap{
+    position:absolute;left:calc(50% - 70px);top:calc(50% - 130px);
+    width:140px;cursor:grab;z-index:100;touch-action:none;display:none;
+  }
+  #pet-wrap:active{cursor:grabbing;}
+
+  /* ── Dialog bubble ── */
+  #bubble{
+    position:absolute;bottom:calc(100% + 14px);left:50%;
+    transform:translateX(-50%) scale(.85);transform-origin:bottom center;
+    background:rgba(255,255,255,.97);color:#1a1a2e;
+    font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;line-height:1.55;
+    padding:11px 16px;border-radius:18px;min-width:150px;max-width:230px;
+    text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.35);
+    opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s cubic-bezier(.34,1.56,.64,1);
+    white-space:pre-wrap;z-index:200;
+  }
+  #bubble.show{opacity:1;transform:translateX(-50%) scale(1);}
+  #bubble::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:7px solid transparent;border-top-color:rgba(255,255,255,.97);}
+  #bubble.left{left:auto;right:calc(100% + 14px);bottom:50%;transform:translateY(50%) scale(.85);transform-origin:right center;}
+  #bubble.left.show{transform:translateY(50%) scale(1);}
+  #bubble.left::after{top:50%;left:100%;transform:translateY(-50%);border-top-color:transparent;border-left-color:rgba(255,255,255,.97);}
+
+  /* ── Custom pet canvas ── */
+  #pet-canvas-wrap{position:relative;width:140px;height:170px;display:flex;align-items:center;justify-content:center;}
+
+  /* The uploaded image styled as a pet */
+  #pet-img-el{
+    width:120px;height:120px;border-radius:50%;
+    object-fit:cover;object-position:center top;
+    display:none;
+    filter:drop-shadow(0 12px 28px rgba(0,0,0,.55));
+    transition:filter .3s;
+  }
+  #pet-wrap:hover #pet-img-el{filter:drop-shadow(0 16px 36px rgba(108,99,255,.55));}
+
+  /* Emotion overlay on the image */
+  #emotion-overlay{
+    position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:120px;height:120px;border-radius:50%;
+    pointer-events:none;z-index:10;
+    display:flex;align-items:center;justify-content:center;
+  }
+  #emotion-face{font-size:48px;opacity:0;transition:opacity .3s;position:absolute;bottom:-4px;right:-4px;}
+  #emotion-face.show{opacity:1;}
+
+  /* Glow ring */
+  #pet-ring{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:132px;height:132px;border-radius:50%;
+    border:3px solid rgba(108,99,255,.4);
+    animation:ring-pulse 2.5s ease-in-out infinite;
+    display:none;
+  }
+  @keyframes ring-pulse{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.5}50%{transform:translate(-50%,-50%) scale(1.08);opacity:.2}}
+
+  /* Antenna */
+  #pet-antenna{
+    position:absolute;top:-28px;left:50%;transform:translateX(-50%);
+    display:none;flex-direction:column;align-items:center;gap:0;
+  }
+  .antenna-stick{width:3px;height:22px;background:linear-gradient(to top,#8c82e8,#a78bfa);border-radius:2px;}
+  .antenna-ball{
+    width:16px;height:16px;border-radius:50%;background:#00e5a0;
+    box-shadow:0 0 10px #00e5a0,0 0 20px rgba(0,229,160,.4);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Space Mono',monospace;font-size:8px;font-weight:700;color:#0f0f1a;
+    animation:ant-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes ant-pulse{0%,100%{box-shadow:0 0 8px #00e5a0,0 0 18px rgba(0,229,160,.3)}50%{box-shadow:0 0 14px #00e5a0,0 0 28px rgba(0,229,160,.6)}}
+
+  /* Feet */
+  #pet-feet{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);display:none;gap:12px;}
+  .foot{width:28px;height:14px;border-radius:50%;background:#7b6fd4;animation:foot-bob 1.8s ease-in-out infinite;}
+  .foot:nth-child(2){animation-delay:.9s;}
+
+  /* SVG default pet */
+  #default-svg{width:140px;height:170px;display:block;filter:drop-shadow(0 12px 24px rgba(0,0,0,.5));}
+  #pet-wrap:hover #default-svg{filter:drop-shadow(0 16px 32px rgba(108,99,255,.5));}
+
+  /* ── Status strip ── */
+  #status-strip{position:absolute;top:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:50;}
+  .status-card{
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;padding:8px 14px;font-family:'Space Mono',monospace;font-size:11px;
+    color:rgba(255,255,255,.7);display:flex;align-items:center;gap:8px;
+    backdrop-filter:blur(8px);cursor:pointer;transition:background .2s,border-color .2s;min-width:185px;
+  }
+  .status-card:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.22);}
+  .status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .dot-run{background:#00e5a0;box-shadow:0 0 6px #00e5a0;animation:blink-dot 1.4s infinite;}
+  .dot-done{background:#6c63ff;}
+  .dot-err{background:#ff5c7c;box-shadow:0 0 6px #ff5c7c;}
+  .dot-idle{background:rgba(255,255,255,.25);}
+  @keyframes blink-dot{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* ── Context menu ── */
+  #ctx-menu{
+    position:fixed;background:rgba(20,20,35,.97);border:1px solid rgba(255,255,255,.14);
+    border-radius:14px;padding:6px;z-index:999;display:none;
+    backdrop-filter:blur(14px);box-shadow:0 16px 48px rgba(0,0,0,.6);min-width:170px;
+  }
+  #ctx-menu button{
+    display:flex;align-items:center;gap:10px;width:100%;padding:9px 14px;
+    background:none;border:none;color:rgba(255,255,255,.85);
+    font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;
+    cursor:pointer;border-radius:8px;text-align:left;transition:background .15s;
+  }
+  #ctx-menu button:hover{background:rgba(255,255,255,.1);}
+  #ctx-menu .sep{height:1px;background:rgba(255,255,255,.09);margin:4px 6px;}
+
+  /* ── Toast ── */
+  #toast{
+    position:fixed;bottom:24px;left:24px;background:rgba(20,20,35,.97);
+    border:1px solid rgba(108,99,255,.4);border-radius:14px;padding:12px 18px;color:#fff;
+    font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;
+    display:flex;align-items:center;gap:10px;
+    transform:translateY(80px);opacity:0;transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .3s;
+    z-index:300;box-shadow:0 8px 32px rgba(0,0,0,.4);max-width:300px;
+  }
+  #toast.show{transform:translateY(0);opacity:1;}
+
+  /* ── Mood bar ── */
+  #mood-bar{position:absolute;bottom:20px;left:20px;font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,255,255,.3);}
+
+  /* ── Change pet button ── */
+  #change-pet-btn{
+    position:absolute;top:20px;left:20px;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    border-radius:10px;padding:8px 14px;color:rgba(255,255,255,.55);
+    font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;cursor:pointer;
+    transition:all .2s;display:none;gap:6px;align-items:center;
+  }
+  #change-pet-btn:hover{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25);}
+
+  /* ── Error message ── */
+  #gen-error{
+    margin-top:8px;padding:10px 16px;background:rgba(255,92,124,.1);
+    border:1px solid rgba(255,92,124,.3);border-radius:10px;
+    color:#ff9ab0;font-size:12px;font-weight:700;text-align:center;display:none;max-width:340px;
+  }
+
+  /* image preview in upload panel */
+  #img-preview-wrap{display:none;flex-direction:column;align-items:center;gap:12px;margin-bottom:16px;}
+  #img-preview{width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid rgba(108,99,255,.5);}
+</style>
+</head>
+<body>
+<div class="desktop" id="desktop">
+
+  <!-- ── Upload Panel ── -->
+  <div id="upload-panel">
+    <div class="up-card" id="drop-zone">
+      <div id="img-preview-wrap">
+        <img id="img-preview" src="" alt="preview"/>
+        <span style="font-size:12px;color:rgba(255,255,255,.4);font-family:'Space Mono',monospace;">looks cute! ready to transform ✨</span>
+      </div>
+      <span class="up-icon" id="up-icon">🐾</span>
+      <div class="up-title">Upload your pet photo</div>
+      <div class="up-sub">Drop any cute animal photo here.<br>Claude AI will turn it into your<br>animated desktop agent companion.</div>
+      <input type="file" id="file-input" accept="image/*"/>
+      <button class="up-btn" id="upload-trigger">Choose photo</button>
+      <div id="gen-error"></div>
+      <div class="up-divider">or</div>
+      <button class="use-default-btn" onclick="useDefault()">Use default purple cat 🐱</button>
+    </div>
+  </div>
+
+  <!-- ── Generating overlay ── -->
+  <div id="gen-overlay">
+    <div class="gen-spinner"></div>
+    <div class="gen-label" id="gen-label">Analysing your cute animal…<br><span class="gen-steps" id="gen-step">reading image</span></div>
+  </div>
+
+  <!-- ── Status strip ── -->
+  <div id="status-strip">
+    <div class="status-card" onclick="agentSpeak(0)"><div class="status-dot dot-run"></div><span>langchain-agent</span></div>
+    <div class="status-card" onclick="agentSpeak(1)"><div class="status-dot dot-done"></div><span>crewai-bot</span></div>
+    <div class="status-card" onclick="agentSpeak(2)"><div class="status-dot dot-err"></div><span>gemini-agent</span></div>
+    <div class="status-card" onclick="agentSpeak(3)"><div class="status-dot dot-idle"></div><span>codex-agent</span></div>
+  </div>
+
+  <!-- ── Change pet button ── -->
+  <button id="change-pet-btn" onclick="showUploadPanel()">🔄 Change pet</button>
+
+  <!-- ── The Pet ── -->
+  <div id="pet-wrap">
+    <div id="bubble"></div>
+
+    <div id="pet-canvas-wrap">
+      <!-- Glow ring -->
+      <div id="pet-ring"></div>
+
+      <!-- Antenna -->
+      <div id="pet-antenna" style="display:flex;">
+        <div class="antenna-ball" id="antenna-ball">3</div>
+        <div class="antenna-stick"></div>
+      </div>
+
+      <!-- Default SVG pet -->
+      <svg id="default-svg" viewBox="0 0 110 160" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="bodyGrad" cx="45%" cy="35%" r="65%"><stop offset="0%" stop-color="#9b8fff"/><stop offset="100%" stop-color="#5b4fcf"/></radialGradient>
+          <radialGradient id="bellyGrad" cx="50%" cy="40%" r="60%"><stop offset="0%" stop-color="#ede9ff"/><stop offset="100%" stop-color="#c4b8ff"/></radialGradient>
+          <radialGradient id="cheekGrad" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ff9bb0" stop-opacity=".9"/><stop offset="100%" stop-color="#ff6b8a" stop-opacity="0"/></radialGradient>
+          <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <ellipse cx="55" cy="155" rx="28" ry="5" fill="rgba(0,0,0,0.3)"/>
+        <g id="body-group">
+          <g id="tail"><path d="M 78 115 Q 100 105 98 90 Q 96 78 85 82" stroke="#7b6fd4" stroke-width="9" fill="none" stroke-linecap="round"/><circle cx="85" cy="82" r="6" fill="#a99fff"/></g>
+          <ellipse cx="55" cy="118" rx="34" ry="30" fill="url(#bodyGrad)"/>
+          <ellipse cx="55" cy="122" rx="19" ry="17" fill="url(#bellyGrad)"/>
+          <g id="arm-left"><path d="M 24 110 Q 14 120 18 132" stroke="#7b6fd4" stroke-width="11" fill="none" stroke-linecap="round"/><circle cx="18" cy="133" r="7" fill="#9b8fff"/></g>
+          <g id="arm-right"><path d="M 86 110 Q 96 120 92 132" stroke="#7b6fd4" stroke-width="11" fill="none" stroke-linecap="round"/><circle cx="92" cy="133" r="7" fill="#9b8fff"/></g>
+          <ellipse id="foot-l" cx="42" cy="147" rx="13" ry="8" fill="#7b6fd4"/>
+          <ellipse id="foot-r" cx="68" cy="147" rx="13" ry="8" fill="#7b6fd4"/>
+          <circle id="head" cx="55" cy="72" r="36" fill="url(#bodyGrad)"/>
+          <g id="ear-left"><ellipse cx="26" cy="44" rx="11" ry="15" fill="#7b6fd4" transform="rotate(-15 26 44)"/><ellipse cx="26" cy="44" rx="6" ry="9" fill="#c4b0ff" transform="rotate(-15 26 44)"/></g>
+          <g id="ear-right"><ellipse cx="84" cy="44" rx="11" ry="15" fill="#7b6fd4" transform="rotate(15 84 44)"/><ellipse cx="84" cy="44" rx="6" ry="9" fill="#c4b0ff" transform="rotate(15 84 44)"/></g>
+          <ellipse cx="32" cy="78" rx="10" ry="7" fill="url(#cheekGrad)"/>
+          <ellipse cx="78" cy="78" rx="10" ry="7" fill="url(#cheekGrad)"/>
+          <g id="eyes">
+            <g id="eye-left"><ellipse cx="42" cy="68" rx="9" ry="10" fill="white"/><circle id="pupil-l" cx="43" cy="69" r="6" fill="#2a1f6e"/><circle cx="45" cy="66" r="2.5" fill="white"/></g>
+            <g id="eye-right"><ellipse cx="68" cy="68" rx="9" ry="10" fill="white"/><circle id="pupil-r" cx="69" cy="69" r="6" fill="#2a1f6e"/><circle cx="71" cy="66" r="2.5" fill="white"/></g>
+            <rect id="blink-l" x="33" y="60" width="18" height="18" rx="9" fill="url(#bodyGrad)" opacity="0"/>
+            <rect id="blink-r" x="59" y="60" width="18" height="18" rx="9" fill="url(#bodyGrad)" opacity="0"/>
+          </g>
+          <ellipse cx="55" cy="78" rx="4" ry="3" fill="#5048c0"/>
+          <g id="mouth">
+            <path id="mouth-happy" d="M 46 85 Q 55 93 64 85" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <path id="mouth-sad" d="M 46 90 Q 55 83 64 90" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0"/>
+            <path id="mouth-talk1" d="M 48 86 Q 55 91 62 86" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0"/>
+            <path id="mouth-talk2" d="M 48 88 Q 55 84 62 88" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0"/>
+          </g>
+        </g>
+      </svg>
+
+      <!-- Custom image pet (hidden until uploaded) -->
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <img id="pet-img-el" src="" alt="your pet"/>
+        <div id="emotion-overlay">
+          <span id="emotion-face"></span>
+        </div>
+        <!-- Custom pet feet -->
+        <div id="pet-feet" style="display:none;position:absolute;bottom:0;left:50%;transform:translateX(-50%);display:none;">
+          <div style="display:flex;gap:14px;">
+            <div class="foot"></div>
+            <div class="foot"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast ── -->
+  <div id="toast"><span id="toast-icon">📡</span><span id="toast-text">Agent update</span></div>
+
+  <div id="mood-bar">mood: <span id="mood-txt">idle</span></div>
+  <div class="hint" id="hint-txt">drag pet anywhere · right-click for options · click agent cards</div>
+
+  <!-- ── Context menu ── -->
+  <div id="ctx-menu">
+    <button onclick="setPetMood('happy');closeMenu()">😊 Happy</button>
+    <button onclick="setPetMood('focused');closeMenu()">🎯 Focused</button>
+    <button onclick="setPetMood('error');closeMenu()">😰 Error</button>
+    <button onclick="setPetMood('idle');closeMenu()">😴 Idle</button>
+    <div class="sep"></div>
+    <button onclick="speak(randomLine());closeMenu()">💬 Say something</button>
+    <button onclick="simulateEvent();closeMenu()">📡 Simulate event</button>
+    <div class="sep"></div>
+    <button onclick="showUploadPanel();closeMenu()">🔄 Change pet</button>
+    <div class="sep"></div>
+    <button onclick="closeMenu()">✕ Close menu</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────
+let mood = 'idle';
+let isTalking = false;
+let bubbleTimer = null;
+let mouthInterval = null;
+let blinkTimer = null;
+let floatT = 0;
+let shaking = false, shakeT = 0;
+let dragging = false, dragged = false;
+let dragOX = 0, dragOY = 0;
+let isCustomPet = false;
+let petPersonality = {}; // filled by Claude for custom pets
+let notifNum = 3;
+let animationStarted = false;
+
+const wrap      = document.getElementById('pet-wrap');
+const bubble    = document.getElementById('bubble');
+const bodyGroup = document.getElementById('body-group');
+const moodTxt   = document.getElementById('mood-txt');
+const antBall   = document.getElementById('antenna-ball');
+const toast     = document.getElementById('toast');
+const toastText = document.getElementById('toast-text');
+const toastIcon = document.getElementById('toast-icon');
+const genOverlay= document.getElementById('gen-overlay');
+const genLabel  = document.getElementById('gen-label');
+const genStep   = document.getElementById('gen-step');
+const defaultSvg= document.getElementById('default-svg');
+const petImgEl  = document.getElementById('pet-img-el');
+const emotionFace=document.getElementById('emotion-face');
+const petRing   = document.getElementById('pet-ring');
+const petAntenna= document.getElementById('pet-antenna');
+const changePetBtn=document.getElementById('change-pet-btn');
+const genError  = document.getElementById('gen-error');
+
+// ─────────────────────────────────────────────
+// Default lines (used when no custom pet)
+// ─────────────────────────────────────────────
+const defaultLines = {
+  idle:    ["Psst… all quiet.\nAnything for me?","Yawn~ waiting\nfor agent tasks…","Ready when\nyou are 🌙","I'm watching\nover your agents!"],
+  happy:   ["Yes! Task done!\nNailed it! 🎉","Your agent\nkilled it today!","All green~ ✅\nLife is good!","Boom! Completed!"],
+  focused: ["Shh… thinking\nhard… 🧠","Processing…\nplease hold","3 tasks running\nin parallel!","Serious\nwork mode."],
+  error:   ["Uh oh! Agent\nhit an error 😰","Rate limit!\nSlowing down…","Something broke.\nChecking logs…","Error detected!\nOn it! 🔧"],
+};
+
+const agentLines = [
+  ["LangChain is\nrunning step 4/7…","Web search tool\ncalled! 🔍","Chain complete!\nResult ready ✓"],
+  ["CrewAI crew\nfinished the job!","Delegation done.\nAll tasks wrapped.","Crew reporting\nin~ ✅"],
+  ["Gemini webhook!\nBatch complete 📡","API rate limit!\nRetrying soon…","Deep Research\ndone! 🧬"],
+  ["Codex is writing\ncode… hold on.","PR drafted!\nReady for review.","Bug fixed! Tests\npassing now ✓"],
+];
+
+function getLines(m){ return (petPersonality.lines && petPersonality.lines[m]) || defaultLines[m] || defaultLines.idle; }
+function randomLine(){ const a=getLines(mood); return a[Math.floor(Math.random()*a.length)]; }
+
+// ─────────────────────────────────────────────
+// Speech
+// ─────────────────────────────────────────────
+function speak(text, duration=3400){
+  if(bubbleTimer) clearTimeout(bubbleTimer);
+  bubble.textContent = text;
+  const cls = bubble.classList.contains('left') ? 'left show' : 'show';
+  bubble.className = cls;
+  isTalking = true;
+  animateMouth(true);
+  bubbleTimer = setTimeout(()=>{
+    const keep = bubble.classList.contains('left') ? 'left' : '';
+    bubble.className = keep;
+    isTalking = false;
+    animateMouth(false);
+  }, duration);
+}
+
+function animateMouth(on){
+  if(!isCustomPet){
+    const happy=document.getElementById('mouth-happy');
+    const t1=document.getElementById('mouth-talk1');
+    const t2=document.getElementById('mouth-talk2');
+    if(!on){ clearInterval(mouthInterval); happy.style.opacity=1; t1.style.opacity=0; t2.style.opacity=0; return; }
+    let phase=0;
+    mouthInterval=setInterval(()=>{ phase=(phase+1)%2; happy.style.opacity=0; t1.style.opacity=phase===0?1:0; t2.style.opacity=phase===1?1:0; },180);
+  } else {
+    // For custom pet: scale the image slightly to simulate talking
+    if(!on){ petImgEl.style.transform='scale(1)'; clearInterval(mouthInterval); return; }
+    let s=false;
+    mouthInterval=setInterval(()=>{ s=!s; petImgEl.style.transform=s?'scale(1.04)':'scale(1)'; },200);
+  }
+}
+
+function agentSpeak(idx){
+  const a=agentLines[idx]; speak(a[Math.floor(Math.random()*a.length)],3500); wobble();
+}
+
+// ─────────────────────────────────────────────
+// Blink (default pet only)
+// ─────────────────────────────────────────────
+function scheduleBlink(){
+  if(blinkTimer) clearTimeout(blinkTimer);
+  blinkTimer=setTimeout(()=>{ doBlink(); scheduleBlink(); }, 2800+Math.random()*4000);
+}
+function doBlink(){
+  if(isCustomPet) return;
+  const bl=document.getElementById('blink-l'), br=document.getElementById('blink-r');
+  bl.style.transition=br.style.transition='opacity .06s';
+  bl.style.opacity=br.style.opacity=1;
+  setTimeout(()=>{ bl.style.opacity=br.style.opacity=0; },130);
+}
+
+// ─────────────────────────────────────────────
+// Eye tracking (default pet)
+// ─────────────────────────────────────────────
+document.addEventListener('mousemove', e=>{
+  if(isCustomPet) return;
+  const rect=wrap.getBoundingClientRect();
+  const cx=rect.left+rect.width/2, cy=rect.top+80;
+  const dx=e.clientX-cx, dy=e.clientY-cy;
+  const angle=Math.atan2(dy,dx);
+  const factor=Math.min(Math.hypot(dx,dy)/80,1)*3;
+  const ox=Math.cos(angle)*factor, oy=Math.sin(angle)*factor;
+  document.getElementById('pupil-l').setAttribute('cx',43+ox);
+  document.getElementById('pupil-l').setAttribute('cy',69+oy);
+  document.getElementById('pupil-r').setAttribute('cx',69+ox);
+  document.getElementById('pupil-r').setAttribute('cy',69+oy);
+});
+
+// ─────────────────────────────────────────────
+// Float animation
+// ─────────────────────────────────────────────
+function animLoop(){
+  floatT+=0.025;
+  const fy=Math.sin(floatT)*4, fx=Math.sin(floatT*.7)*1.5;
+
+  if(!isCustomPet){
+    bodyGroup.setAttribute('transform',`translate(${fx},${fy})`);
+    document.getElementById('ear-left').setAttribute('transform',`rotate(${-15+Math.sin(floatT*1.3)*3},26,44)`);
+    document.getElementById('ear-right').setAttribute('transform',`rotate(${15-Math.sin(floatT*1.3)*3},84,44)`);
+    document.getElementById('arm-left').setAttribute('transform',`rotate(${Math.sin(floatT*.9)*4},24,110)`);
+    document.getElementById('arm-right').setAttribute('transform',`rotate(${-Math.sin(floatT*.9)*4},86,110)`);
+    document.getElementById('tail').setAttribute('transform',`rotate(${Math.sin(floatT*1.6)*8},78,115)`);
+  } else {
+    // Float the whole custom pet image
+    const cw=document.getElementById('pet-canvas-wrap');
+    cw.style.transform=`translate(${fx}px,${fy}px)`;
+    // Bounce emotion face
+    if(emotionFace.classList.contains('show')){
+      emotionFace.style.transform=`scale(${1+Math.sin(floatT*2)*.07})`;
+    }
+  }
+
+  if(shaking){
+    shakeT+=0.4;
+    const sx=Math.sin(shakeT*8)*6*Math.exp(-shakeT*.15);
+    wrap.style.marginLeft=sx+'px';
+    if(shakeT>15){ shaking=false; wrap.style.marginLeft='0'; }
+  }
+  requestAnimationFrame(animLoop);
+}
+
+function startAnimationLoop(){
+  if(animationStarted) return;
+  animationStarted = true;
+  animLoop();
+}
+
+// ─────────────────────────────────────────────
+// Mood
+// ─────────────────────────────────────────────
+const moodEmoji={ happy:'😄', focused:'🤔', error:'😰', idle:'😴' };
+const moodColors={ happy:'#00e5a0', focused:'#6c63ff', error:'#ff5c7c', idle:'rgba(255,255,255,.4)' };
+
+function setPetMood(m){
+  mood=m; moodTxt.textContent=m;
+  antBall.style.background=moodColors[m];
+  antBall.style.boxShadow=`0 0 10px ${moodColors[m]},0 0 20px ${moodColors[m]}44`;
+  if(!isCustomPet){
+    const happy=document.getElementById('mouth-happy');
+    const sad=document.getElementById('mouth-sad');
+    happy.style.opacity=m==='error'?0:1;
+    sad.style.opacity=m==='error'?1:0;
+  } else {
+    showEmotion(moodEmoji[m]||'😊');
+  }
+  if(m==='error') wobbleHard();
+  const line=getLines(m); speak(line[Math.floor(Math.random()*line.length)]);
+}
+
+function showEmotion(emoji){
+  emotionFace.textContent=emoji;
+  emotionFace.classList.add('show');
+  clearTimeout(emotionFace._timer);
+  emotionFace._timer=setTimeout(()=>emotionFace.classList.remove('show'),3000);
+}
+
+// ─────────────────────────────────────────────
+// Wobble
+// ─────────────────────────────────────────────
+function wobble(){ shaking=true; shakeT=0; }
+function wobbleHard(){ shaking=true; shakeT=0; }
+
+// ─────────────────────────────────────────────
+// Toast
+// ─────────────────────────────────────────────
+let toastTimer=null;
+function showToast(icon,text){
+  toastIcon.textContent=icon; toastText.textContent=text;
+  toast.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>toast.classList.remove('show'),4200);
+}
+
+// ─────────────────────────────────────────────
+// Simulated agent events
+// ─────────────────────────────────────────────
+const fakeEvents=[
+  {mood:'focused',icon:'🔍',msg:'LangChain: calling web_search…',speak:"Web search\ncalled! 🔍"},
+  {mood:'happy',  icon:'✅',msg:'CrewAI: task batch done!',      speak:"CrewAI finished!\nAll done! 🎉"},
+  {mood:'error',  icon:'🚨',msg:'Gemini: rate limit hit',        speak:"Uh oh! Rate\nlimit hit 😰"},
+  {mood:'happy',  icon:'✅',msg:'Codex: PR ready for review',    speak:"Code is ready!\nCheck it boss 💻"},
+  {mood:'focused',icon:'🧠',msg:'AutoGen: multi-agent chain…',   speak:"Multi-agent\nchain running… 🧠"},
+];
+let fakeIdx=0;
+function simulateEvent(){
+  const ev=fakeEvents[fakeIdx%fakeEvents.length]; fakeIdx++;
+  notifNum++;
+  antBall.textContent=notifNum;
+  // Use custom speak line if pet has personality
+  const customSpeak = petPersonality.eventLines ? petPersonality.eventLines[fakeIdx%petPersonality.eventLines.length] : null;
+  setPetMood(ev.mood);
+  speak(customSpeak||ev.speak, 3600);
+  showToast(ev.icon, ev.msg);
+  if(isCustomPet) showEmotion(moodEmoji[ev.mood]||'😊');
+}
+
+// ─────────────────────────────────────────────
+// Drag
+// ─────────────────────────────────────────────
+wrap.addEventListener('pointerdown', e=>{
+  if(e.button!==0) return;
+  dragging=true; dragged=false;
+  wrap.setPointerCapture(e.pointerId);
+  const r=wrap.getBoundingClientRect();
+  dragOX=e.clientX-r.left; dragOY=e.clientY-r.top;
+  e.preventDefault();
+});
+document.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  dragged=true;
+  const x=Math.max(0,Math.min(e.clientX-dragOX, window.innerWidth-wrap.offsetWidth));
+  const y=Math.max(0,Math.min(e.clientY-dragOY, window.innerHeight-wrap.offsetHeight));
+  wrap.style.left=x+'px'; wrap.style.top=y+'px';
+  if(e.clientX>window.innerWidth-270) bubble.classList.add('left');
+  else bubble.classList.remove('left');
+});
+document.addEventListener('pointerup',()=>{ dragging=false; });
+wrap.addEventListener('click', e=>{
+  if(dragged){ dragged=false; return; }
+  speak(randomLine()); wobble();
+  if(isCustomPet) showEmotion(['😊','🥰','😸','✨','🎉'][Math.floor(Math.random()*5)]);
+});
+
+// ─────────────────────────────────────────────
+// Context menu
+// ─────────────────────────────────────────────
+const ctxMenu=document.getElementById('ctx-menu');
+wrap.addEventListener('contextmenu', e=>{ e.preventDefault(); ctxMenu.style.cssText=`display:block;left:${e.clientX}px;top:${e.clientY}px`; });
+document.addEventListener('click',()=>closeMenu());
+function closeMenu(){ ctxMenu.style.display='none'; }
+
+// ─────────────────────────────────────────────
+// Upload panel
+// ─────────────────────────────────────────────
+const uploadPanel=document.getElementById('upload-panel');
+const fileInput=document.getElementById('file-input');
+const dropZone=document.getElementById('drop-zone');
+const upIcon=document.getElementById('up-icon');
+const imgPreviewWrap=document.getElementById('img-preview-wrap');
+const imgPreview=document.getElementById('img-preview');
+
+document.getElementById('upload-trigger').addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change', e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+dropZone.addEventListener('dragover', e=>{ e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e=>{ e.preventDefault(); dropZone.classList.remove('dragover'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+let uploadedBase64='';
+let uploadedMime='';
+
+function handleFile(file){
+  if(!file.type.startsWith('image/')){ showError('Please upload an image file (jpg, png, gif, webp).'); return; }
+  if(file.size > 5*1024*1024){ showError('Image too large. Please use an image under 5MB.'); return; }
+  genError.style.display='none';
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const dataUrl=ev.target.result;
+    uploadedBase64=dataUrl.split(',')[1];
+    uploadedMime=file.type;
+    // Show preview
+    imgPreview.src=dataUrl;
+    imgPreviewWrap.style.display='flex';
+    upIcon.style.display='none';
+    // Auto-proceed after short delay
+    setTimeout(()=>generatePetFromImage(uploadedBase64, uploadedMime, dataUrl),500);
+  };
+  reader.readAsDataURL(file);
+}
+
+function showError(msg){
+  genError.textContent=msg; genError.style.display='block';
+  genOverlay.classList.remove('show');
+}
+
+async function generatePetFromImage(base64, mime, dataUrl){
+  return generatePetFromImageLocal(base64, mime, dataUrl);
+}
+
+async function generatePetFromImageRemote(base64, mime, dataUrl){
+  uploadPanel.style.display='none';
+  genOverlay.classList.add('show');
+  genLabel.innerHTML='Analysing your cute animal…<br><span class="gen-steps" id="gen-step">reading image</span>';
+
+  const steps=['reading image…','detecting animal type…','crafting personality…','writing dialog lines…','adding emoji emotions…','finalising your pet! ✨'];
+  let si=0;
+  const stepInterval=setInterval(()=>{
+    si++;
+    const el=document.getElementById('gen-step');
+    if(el && si<steps.length) el.textContent=steps[si];
+  },1800);
+
+  try {
+    const prompt=`Look at this animal photo and fill in the JSON template below. Replace every placeholder value with real data. Output ONLY the completed JSON — no words before or after it.
+
+Template to complete:
+"animalType": one of cat/dog/rabbit/hamster/bird/fox/bear/other,
+"petName": cute short name max 10 chars,
+"primaryColor": hex color of the animal's dominant fur/feather color,
+"description": one sentence max 12 words describing its look and vibe,
+"personality": one of playful/calm/mischievous/serious/energetic/sleepy,
+"lines": {
+  "idle": [3 short cute things this animal says when bored, use \\n for line breaks, stay in character],
+  "happy": [3 excited lines],
+  "focused": [3 serious/working lines],
+  "error": [3 worried lines]
+},
+"eventLines": [5 short agent-update lines this animal would say, in character],
+"emotions": { "idle": emoji, "happy": emoji, "focused": emoji, "error": emoji },
+"ringColor": hex color complementary to primaryColor`;
+
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1200,
+        system:'You are a JSON-only API. You MUST respond with a single valid JSON object and absolutely nothing else — no explanation, no markdown, no code fences, no preamble, no trailing text. Your entire response is parsed directly by JSON.parse().',
+        messages:[
+          {
+            role:'user',
+            content:[
+              {type:'image',source:{type:'base64',media_type:mime,data:base64}},
+              {type:'text',text:prompt}
+            ]
+          },
+          {
+            role:'assistant',
+            content:'{'  // prefill forces the model to continue the JSON object
+          }
+        ]
+      })
+    });
+
+    clearInterval(stepInterval);
+
+    if(!res.ok){
+      const errBody=await res.json().catch(()=>({}));
+      throw new Error(errBody.error?.message||'API error '+res.status);
+    }
+
+    const data=await res.json();
+    const raw=data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+
+    // Robust JSON extraction: the prefill means response starts mid-object,
+    // so we reconstruct the full object, then also handle cases where the
+    // model ignored the prefill and returned fenced or plain JSON.
+    let profile;
+    const attempts=[
+      ()=>JSON.parse('{'+raw),                                          // prefill continuation
+      ()=>JSON.parse(raw),                                              // already full JSON
+      ()=>{ const m=raw.match(/```(?:json)?\s*([\s\S]*?)```/); if(m) return JSON.parse(m[1]); throw new Error('no fence'); },
+      ()=>{ const m=raw.match(/\{[\s\S]*\}/); if(m) return JSON.parse(m[0]); throw new Error('no braces'); }
+    ];
+    let lastErr;
+    for(const fn of attempts){
+      try{ profile=fn(); break; } catch(e){ lastErr=e; }
+    }
+    if(!profile) throw new Error('Could not parse pet profile: '+lastErr.message);
+
+    clearInterval(stepInterval);
+    activateCustomPet(profile, dataUrl);
+
+  } catch(err){
+    clearInterval(stepInterval);
+    genOverlay.classList.remove('show');
+    uploadPanel.style.display='flex';
+    imgPreviewWrap.style.display='flex';
+    upIcon.style.display='none';
+    showError('Could not generate pet: '+err.message+'. Try a clearer photo or use the default pet.');
+    console.error(err);
+  }
+}
+
+async function generatePetFromImageLocal(base64, mime, dataUrl){
+  uploadPanel.style.display='none';
+  genOverlay.classList.add('show');
+  genLabel.innerHTML='Preparing your pet...<br><span class="gen-steps" id="gen-step">reading image</span>';
+
+  try {
+    const profile = await createLocalPetProfile(dataUrl);
+    genOverlay.classList.remove('show');
+    activateCustomPet(profile, dataUrl);
+  } catch(err){
+    genOverlay.classList.remove('show');
+    uploadPanel.style.display='flex';
+    imgPreviewWrap.style.display='flex';
+    upIcon.style.display='none';
+    showError('Could not change pet: '+err.message+'. Try a different image or use the default pet.');
+    console.error(err);
+  }
+}
+
+function createLocalPetProfile(dataUrl){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 40;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img,0,0,size,size);
+      const pixels = ctx.getImageData(0,0,size,size).data;
+      let r=0,g=0,b=0,count=0;
+      for(let i=0;i<pixels.length;i+=16){
+        if(pixels[i+3]<30) continue;
+        r+=pixels[i];
+        g+=pixels[i+1];
+        b+=pixels[i+2];
+        count++;
+      }
+      if(!count) return reject(new Error('image did not load clearly'));
+      r=Math.round(r/count);
+      g=Math.round(g/count);
+      b=Math.round(b/count);
+      const name = pickPetName(r,g,b);
+      resolve({
+        animalType:'other',
+        petName:name,
+        primaryColor:rgbToHex(r,g,b),
+        ringColor:rgbToHex(255-r,255-g,255-b),
+        description:'Your photo-powered agent buddy is ready.',
+        personality:'playful',
+        lines:{
+          idle:[`${name} is watching\nthe queue.`,`Tiny paws,\nbig uptime.`,`Ready for the\nnext agent ping.`],
+          happy:[`Nice! ${name}\nlikes green checks.`,`Task done!\nTreat time.`,`That landed\nbeautifully!`],
+          focused:[`${name} is\ntracking this.`,`Processing...\nstay cozy.`,`Focus mode:\nwhiskers on.`],
+          error:[`${name} spotted\nan issue.`,`Uh oh,\nchecking logs.`,`Something needs\na closer look.`]
+        },
+        eventLines:[`${name} got an update.`,`Agent signal received.`,`New task movement.`,`Status changed.`,`Watching that one.`],
+        emotions:{ idle:'😴', happy:'😄', focused:'🤔', error:'😰' }
+      });
+    };
+    img.onerror = () => reject(new Error('image could not be loaded'));
+    img.src = dataUrl;
+  });
+}
+
+function rgbToHex(r,g,b){
+  return '#'+[r,g,b].map(v=>Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
+}
+
+function pickPetName(r,g,b){
+  const bright = (r+g+b)/3;
+  if(g>r+35 && g>b+15) return 'Mochi';
+  if(r>180 && g>140 && b<120) return 'Sunny';
+  if(b>r+25 && b>g+10) return 'Nova';
+  if(bright<80) return 'Shadow';
+  if(bright>190) return 'Pearl';
+  return 'Pixel';
+}
+
+function activateCustomPet(profile, dataUrl){
+  petPersonality=profile;
+  isCustomPet=true;
+
+  // Hide default SVG, show image pet
+  defaultSvg.style.display='none';
+  petImgEl.src=dataUrl;
+  petImgEl.style.display='block';
+
+  // Style the ring with animal's color
+  petRing.style.borderColor=profile.ringColor||profile.primaryColor||'rgba(108,99,255,.4)';
+  petRing.style.display='block';
+
+  // Show antenna
+  petAntenna.style.display='flex';
+  antBall.textContent=notifNum;
+
+  // Show feet only for certain animals
+  const feet=document.getElementById('pet-feet');
+  if(feet){ feet.style.display='none'; }
+  if(['dog','cat','rabbit','fox','bear'].includes(profile.animalType)){
+    if(feet){ feet.style.display='flex'; }
+  }
+
+  genOverlay.classList.remove('show');
+  uploadPanel.style.display='none';
+  wrap.style.display='block';
+  changePetBtn.style.display='flex';
+
+  // Greet with pet's name and personality
+  const greeting=`Hi! I'm ${profile.petName}!\n${profile.description}`;
+  setTimeout(()=>{ speak(greeting,4500); showEmotion(profile.emotions?.happy||'😊'); },600);
+
+  // Start auto events
+  startAutoEvents();
+  scheduleBlink();
+  startAnimationLoop();
+  startIdleChatter();
+}
+
+function useDefault(){
+  isCustomPet=false;
+  petPersonality={};
+  uploadPanel.style.display='none';
+  defaultSvg.style.display='block';
+  petImgEl.style.display='none';
+  petImgEl.src='';
+  petRing.style.display='none';
+  petAntenna.style.display='flex';
+  const feet=document.getElementById('pet-feet');
+  if(feet){ feet.style.display='none'; }
+  document.getElementById('pet-canvas-wrap').style.transform='';
+  wrap.style.display='block';
+  changePetBtn.style.display='flex';
+  setTimeout(()=>speak("Hey! I'm your\nagent pet 🐾\nDrag me anywhere!",4000),600);
+  startAutoEvents();
+  scheduleBlink();
+  startAnimationLoop();
+  startIdleChatter();
+}
+
+function showUploadPanel(){
+  uploadPanel.style.display='flex';
+  genError.style.display='none';
+  imgPreviewWrap.style.display='none';
+  upIcon.style.display='block';
+  fileInput.value='';
+}
+
+// ─────────────────────────────────────────────
+// Auto events & idle chatter
+// ─────────────────────────────────────────────
+let autoEventInterval=null, idleInterval=null;
+function startAutoEvents(){
+  if(autoEventInterval) clearInterval(autoEventInterval);
+  autoEventInterval=setInterval(simulateEvent,7000);
+}
+function startIdleChatter(){
+  if(idleInterval) clearInterval(idleInterval);
+  idleInterval=setInterval(()=>{ if(!isTalking&&Math.random()>.55) speak(randomLine(),2800); },9000);
+}
+
+// ─────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────
+// Upload panel shows first — pet spawns after upload or default choice
+</script>
+</body>
+</html>

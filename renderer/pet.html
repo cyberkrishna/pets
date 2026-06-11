@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Pet</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Mono:wght@400;700&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none;}
+  html,body{width:100vw;height:100vh;background:transparent;font-family:'Nunito',sans-serif;overflow:hidden;cursor:default;}
+
+  /* The whole page is transparent so the desktop shows through. */
+  .desktop{width:100%;height:100%;position:relative;background:transparent;}
+
+  /* ── Dialog bubble ── */
+  #bubble{
+    position:absolute;bottom:calc(100% + 14px);left:50%;
+    transform:translateX(-50%) scale(.85);transform-origin:bottom center;
+    background:rgba(255,255,255,.97);color:#1a1a2e;
+    font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;line-height:1.5;
+    padding:9px 13px;border-radius:16px;min-width:100px;max-width:185px;
+    text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.45);
+    opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s cubic-bezier(.34,1.56,.64,1);
+    white-space:pre-wrap;z-index:200;
+  }
+  #bubble.show{opacity:1;transform:translateX(-50%) scale(1);}
+  #bubble::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:7px solid transparent;border-top-color:rgba(255,255,255,.97);}
+  #bubble.left{left:auto;right:calc(100% + 14px);bottom:50%;transform:translateY(50%) scale(.85);transform-origin:right center;}
+  #bubble.left.show{transform:translateY(50%) scale(1);}
+  #bubble.left::after{top:50%;left:100%;transform:translateY(-50%);border-top-color:transparent;border-left-color:rgba(255,255,255,.97);}
+
+  /* ── Pet container — anchored bottom-center of the window ── */
+  #pet-wrap{
+    position:absolute;left:calc(50% - 70px);bottom:24px;
+    width:140px;cursor:grab;z-index:100;touch-action:none;
+  }
+  #pet-wrap:active{cursor:grabbing;}
+
+  #pet-canvas-wrap{position:relative;width:140px;height:170px;display:flex;align-items:center;justify-content:center;}
+
+  #pet-ring{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:132px;height:132px;border-radius:50%;
+    border:3px solid rgba(108,99,255,.4);
+    animation:ring-pulse 2.5s ease-in-out infinite;display:none;
+  }
+  @keyframes ring-pulse{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.5}50%{transform:translate(-50%,-50%) scale(1.08);opacity:.2}}
+
+  /* Antenna */
+  #pet-antenna{position:absolute;top:-28px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;}
+  .antenna-stick{width:3px;height:22px;background:linear-gradient(to top,#8c82e8,#a78bfa);border-radius:2px;}
+  .antenna-ball{
+    width:16px;height:16px;border-radius:50%;background:#00e5a0;
+    box-shadow:0 0 10px #00e5a0,0 0 20px rgba(0,229,160,.4);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Space Mono',monospace;font-size:8px;font-weight:700;color:#0f0f1a;
+    animation:ant-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes ant-pulse{0%,100%{box-shadow:0 0 8px #00e5a0,0 0 18px rgba(0,229,160,.3)}50%{box-shadow:0 0 14px #00e5a0,0 0 28px rgba(0,229,160,.6)}}
+
+  #default-svg{width:140px;height:170px;display:block;filter:drop-shadow(0 12px 24px rgba(0,0,0,.5));}
+  #pet-wrap:hover #default-svg{filter:drop-shadow(0 16px 32px rgba(108,99,255,.6));}
+
+  /* Sprite-sheet pet canvas (hidden until a sprite pet is selected). */
+  #pet-canvas{width:140px;height:170px;display:none;image-rendering:pixelated;
+    filter:drop-shadow(0 10px 18px rgba(0,0,0,.5));}
+  #pet-wrap:hover #pet-canvas{filter:drop-shadow(0 14px 26px rgba(108,99,255,.55));}
+  body.sprite-mode #default-svg{display:none;}
+  body.sprite-mode #pet-antenna{display:none;}
+  body.sprite-mode #pet-ring{display:none !important;}
+  body.sprite-mode #pet-canvas{display:block;}
+
+  /* ── Status badge (OpenPets-style): a small chip next to the pet that shows
+     the current reaction while the agent is busy. ── */
+  #status-badge{
+    position:absolute;right:-6px;bottom:8px;z-index:150;
+    background:rgba(20,20,35,.92);border:1px solid rgba(255,255,255,.16);
+    border-radius:50%;width:30px;height:30px;
+    display:flex;align-items:center;justify-content:center;font-size:15px;
+    box-shadow:0 4px 14px rgba(0,0,0,.45);
+    opacity:0;transform:scale(.6);transition:opacity .2s,transform .2s cubic-bezier(.34,1.56,.64,1);
+    pointer-events:none;
+  }
+  #status-badge.show{opacity:1;transform:scale(1);}
+
+  /* ── Floating hearts (petting / play reactions) ── */
+  .heart{
+    position:absolute;font-size:15px;color:#ff5a78;pointer-events:none;z-index:180;
+    animation:heart-up 1.25s ease-out forwards;text-shadow:0 2px 6px rgba(0,0,0,.35);
+  }
+  @keyframes heart-up{
+    0%{opacity:0;transform:translateY(0) scale(.5)}
+    20%{opacity:1}
+    100%{opacity:0;transform:translateY(-52px) scale(1.2)}
+  }
+
+  /* ── Context menu ── */
+  #ctx-menu{
+    position:fixed;background:rgba(20,20,35,.97);border:1px solid rgba(255,255,255,.14);
+    border-radius:14px;padding:6px;z-index:999;display:none;
+    backdrop-filter:blur(14px);box-shadow:0 16px 48px rgba(0,0,0,.6);min-width:170px;
+  }
+  #ctx-menu button{
+    display:flex;align-items:center;gap:10px;width:100%;padding:9px 14px;
+    background:none;border:none;color:rgba(255,255,255,.85);
+    font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;
+    cursor:pointer;border-radius:8px;text-align:left;transition:background .15s;
+  }
+  #ctx-menu button:hover{background:rgba(255,255,255,.1);}
+  #ctx-menu .sep{height:1px;background:rgba(255,255,255,.09);margin:4px 6px;}
+
+</style>
+</head>
+<body>
+<div class="desktop" id="desktop">
+
+  <!-- ── The Pet ── -->
+  <div id="pet-wrap">
+    <div id="bubble"></div>
+
+    <div id="pet-canvas-wrap">
+      <div id="pet-ring"></div>
+
+      <div id="pet-antenna">
+        <div class="antenna-ball" id="antenna-ball"></div>
+        <div class="antenna-stick"></div>
+      </div>
+
+      <svg id="default-svg" viewBox="0 0 110 160" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="bodyGrad" cx="45%" cy="35%" r="65%"><stop offset="0%" stop-color="#9b8fff"/><stop offset="100%" stop-color="#5b4fcf"/></radialGradient>
+          <radialGradient id="bellyGrad" cx="50%" cy="40%" r="60%"><stop offset="0%" stop-color="#ede9ff"/><stop offset="100%" stop-color="#c4b8ff"/></radialGradient>
+          <radialGradient id="cheekGrad" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ff9bb0" stop-opacity=".9"/><stop offset="100%" stop-color="#ff6b8a" stop-opacity="0"/></radialGradient>
+        </defs>
+        <ellipse cx="55" cy="155" rx="28" ry="5" fill="rgba(0,0,0,0.3)"/>
+        <g id="body-group">
+          <g id="tail"><path d="M 78 115 Q 100 105 98 90 Q 96 78 85 82" stroke="#7b6fd4" stroke-width="9" fill="none" stroke-linecap="round"/><circle cx="85" cy="82" r="6" fill="#a99fff"/></g>
+          <ellipse cx="55" cy="118" rx="34" ry="30" fill="url(#bodyGrad)"/>
+          <ellipse cx="55" cy="122" rx="19" ry="17" fill="url(#bellyGrad)"/>
+          <g id="arm-left"><path d="M 24 110 Q 14 120 18 132" stroke="#7b6fd4" stroke-width="11" fill="none" stroke-linecap="round"/><circle cx="18" cy="133" r="7" fill="#9b8fff"/></g>
+          <g id="arm-right"><path d="M 86 110 Q 96 120 92 132" stroke="#7b6fd4" stroke-width="11" fill="none" stroke-linecap="round"/><circle cx="92" cy="133" r="7" fill="#9b8fff"/></g>
+          <ellipse id="foot-l" cx="42" cy="147" rx="13" ry="8" fill="#7b6fd4"/>
+          <ellipse id="foot-r" cx="68" cy="147" rx="13" ry="8" fill="#7b6fd4"/>
+          <circle id="head" cx="55" cy="72" r="36" fill="url(#bodyGrad)"/>
+          <g id="ear-left"><ellipse cx="26" cy="44" rx="11" ry="15" fill="#7b6fd4" transform="rotate(-15 26 44)"/><ellipse cx="26" cy="44" rx="6" ry="9" fill="#c4b0ff" transform="rotate(-15 26 44)"/></g>
+          <g id="ear-right"><ellipse cx="84" cy="44" rx="11" ry="15" fill="#7b6fd4" transform="rotate(15 84 44)"/><ellipse cx="84" cy="44" rx="6" ry="9" fill="#c4b0ff" transform="rotate(15 84 44)"/></g>
+          <ellipse cx="32" cy="78" rx="10" ry="7" fill="url(#cheekGrad)"/>
+          <ellipse cx="78" cy="78" rx="10" ry="7" fill="url(#cheekGrad)"/>
+          <g id="eyes">
+            <g id="eye-left"><ellipse cx="42" cy="68" rx="9" ry="10" fill="white"/><circle id="pupil-l" cx="43" cy="69" r="6" fill="#2a1f6e"/><circle cx="45" cy="66" r="2.5" fill="white"/></g>
+            <g id="eye-right"><ellipse cx="68" cy="68" rx="9" ry="10" fill="white"/><circle id="pupil-r" cx="69" cy="69" r="6" fill="#2a1f6e"/><circle cx="71" cy="66" r="2.5" fill="white"/></g>
+            <rect id="blink-l" x="33" y="60" width="18" height="18" rx="9" fill="url(#bodyGrad)" opacity="0"/>
+            <rect id="blink-r" x="59" y="60" width="18" height="18" rx="9" fill="url(#bodyGrad)" opacity="0"/>
+          </g>
+          <ellipse cx="55" cy="78" rx="4" ry="3" fill="#5048c0"/>
+          <g id="mouth">
+            <path id="mouth-happy" d="M 46 85 Q 55 93 64 85" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <path id="mouth-sad" d="M 46 90 Q 55 83 64 90" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0"/>
+            <path id="mouth-talk1" d="M 48 86 Q 55 91 62 86" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0"/>
+            <path id="mouth-talk2" d="M 48 88 Q 55 84 62 88" stroke="#5048c0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0"/>
+          </g>
+        </g>
+      </svg>
+
+      <!-- Sprite-sheet pet (shown instead of the SVG when a sprite pet is active) -->
+      <canvas id="pet-canvas" width="140" height="170"></canvas>
+
+      <!-- Reaction badge (shows while the agent is busy) -->
+      <div id="status-badge"></div>
+    </div>
+  </div>
+
+  <!-- ── Context menu ── -->
+  <div id="ctx-menu">
+    <button onclick="speak(idleLine());closeMenu()">💬 Say something</button>
+    <button onclick="cyclePet();closeMenu()">🐾 Next pet</button>
+    <button onclick="delight();closeMenu()">🎾 Play</button>
+    <button onclick="simulateEvent();closeMenu()">📡 Simulate event</button>
+    <div class="sep"></div>
+    <button id="mute-btn" onclick="toggleMute();closeMenu()">🔇 Mute</button>
+    <button onclick="closeMenu()">✕ Close menu</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────
+let mood = 'idle';
+let isTalking = false;
+let bubbleTimer = null;
+let mouthInterval = null;
+let blinkTimer = null;
+let floatT = 0;
+let shaking = false, shakeT = 0;
+let dragging = false, dragged = false;
+let lastPX = 0, lastPY = 0;
+
+const wrap      = document.getElementById('pet-wrap');
+const bubble    = document.getElementById('bubble');
+const bodyGroup = document.getElementById('body-group');
+const antBall   = document.getElementById('antenna-ball');
+const petRing   = document.getElementById('pet-ring');
+const statusBadge = document.getElementById('status-badge');
+
+// ─────────────────────────────────────────────
+// Idle chatter lines
+// ─────────────────────────────────────────────
+const idleLines = ["Psst… all quiet.\nWatching your agents 👀","Yawn~ waiting\nfor agent tasks…","Ready when\nyou are 🌙","I'll ping you when\nsomething happens!"];
+function idleLine(){ return idleLines[Math.floor(Math.random()*idleLines.length)]; }
+
+// ─────────────────────────────────────────────
+// Per-reaction message pools (ported from OpenPets reaction-messages.ts)
+// ─────────────────────────────────────────────
+const reactionMessages = {
+  idle:["Ready","Standing by","On standby","Keeping watch","All quiet","At rest","Here if needed","Watching the queue"],
+  thinking:["Reviewing","Checking context","Planning","Considering options","Tracing this","Reading context","Weighing paths","Building a plan"],
+  working:["In progress","Handling task","Making progress","Working through it","On the task","Making headway","Steady progress","Keeping momentum"],
+  editing:["Updating files","Applying changes","Adjusting code","Refining changes","Cleaning up","Updating the diff","Reworking code","Tidying files"],
+  running:["Starting task","Process started","Task underway","Command underway","Process active","Job in progress","Tool is active","Watching results"],
+  testing:["Running checks","Verifying","Checking results","Confirming behavior","Validating fix","Checking output","Confirming checks","Probing behavior"],
+  waiting:["Approval needed","Paused for review","Need a decision","Ready for approval","Your call","Input needed","Holding here","Need direction"],
+  waving:["Hello","Checking in","Attention needed","Quick update","Over here","Heads up","Small nudge","New signal"],
+  done:["Done","All set","Finished","Complete","Good to go","Wrapped up","Task complete","Result landed"],
+  success:["Done","All set","Finished","Checks passed","Good to go","Checks are clean","Green light","Result landed"],
+  error:["Failed","Needs attention","Issue found","Check failed","Problem detected","Review needed","Something broke","Retry needed"],
+  celebrating:["Nice work","Win confirmed","Great result","That worked","Finished well","Victory","Big finish","Result shines"],
+};
+function pickReactionMessage(reaction){
+  const pool = reactionMessages[reaction];
+  if(!pool || !pool.length) return '';
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+// ─────────────────────────────────────────────
+// Speech
+// ─────────────────────────────────────────────
+function speak(text, duration=3600){
+  if(!text) return;
+  if(bubbleTimer) clearTimeout(bubbleTimer);
+  bubble.textContent = text;
+  bubble.className = bubble.classList.contains('left') ? 'left show' : 'show';
+  isTalking = true;
+  animateMouth(true);
+  bubbleTimer = setTimeout(()=>{
+    bubble.className = bubble.classList.contains('left') ? 'left' : '';
+    isTalking = false;
+    animateMouth(false);
+  }, duration);
+}
+
+function animateMouth(on){
+  const happy=document.getElementById('mouth-happy');
+  const t1=document.getElementById('mouth-talk1');
+  const t2=document.getElementById('mouth-talk2');
+  if(!on){ clearInterval(mouthInterval); happy.style.opacity=1; t1.style.opacity=0; t2.style.opacity=0; return; }
+  let phase=0;
+  mouthInterval=setInterval(()=>{ phase=(phase+1)%2; happy.style.opacity=0; t1.style.opacity=phase===0?1:0; t2.style.opacity=phase===1?1:0; },180);
+}
+
+// ─────────────────────────────────────────────
+// Blink + eye tracking
+// ─────────────────────────────────────────────
+function scheduleBlink(){ blinkTimer=setTimeout(()=>{ doBlink(); scheduleBlink(); }, 2800+Math.random()*4000); }
+function doBlink(){
+  const bl=document.getElementById('blink-l'), br=document.getElementById('blink-r');
+  bl.style.transition=br.style.transition='opacity .06s';
+  bl.style.opacity=br.style.opacity=1;
+  setTimeout(()=>{ bl.style.opacity=br.style.opacity=0; },130);
+}
+document.addEventListener('mousemove', e=>{
+  const rect=wrap.getBoundingClientRect();
+  const cx=rect.left+rect.width/2, cy=rect.top+80;
+  const dx=e.clientX-cx, dy=e.clientY-cy;
+  const angle=Math.atan2(dy,dx);
+  const factor=Math.min(Math.hypot(dx,dy)/80,1)*3;
+  const ox=Math.cos(angle)*factor, oy=Math.sin(angle)*factor;
+  document.getElementById('pupil-l').setAttribute('cx',43+ox);
+  document.getElementById('pupil-l').setAttribute('cy',69+oy);
+  document.getElementById('pupil-r').setAttribute('cx',69+ox);
+  document.getElementById('pupil-r').setAttribute('cy',69+oy);
+});
+
+// ─────────────────────────────────────────────
+// Float animation loop
+// ─────────────────────────────────────────────
+function animLoop(ts){
+  floatT+=0.025;
+  const fy=Math.sin(floatT)*4, fx=Math.sin(floatT*.7)*1.5;
+  bodyGroup.setAttribute('transform',`translate(${fx},${fy})`);
+  document.getElementById('ear-left').setAttribute('transform',`rotate(${-15+Math.sin(floatT*1.3)*3},26,44)`);
+  document.getElementById('ear-right').setAttribute('transform',`rotate(${15-Math.sin(floatT*1.3)*3},84,44)`);
+  document.getElementById('arm-left').setAttribute('transform',`rotate(${Math.sin(floatT*.9)*4},24,110)`);
+  document.getElementById('arm-right').setAttribute('transform',`rotate(${-Math.sin(floatT*.9)*4},86,110)`);
+  document.getElementById('tail').setAttribute('transform',`rotate(${Math.sin(floatT*1.6)*8},78,115)`);
+
+  // Sprite pet shares the same gentle bob as the SVG pet.
+  sprite.draw(ts || 0, fy);
+
+  if(shaking){
+    shakeT+=0.4;
+    const sx=Math.sin(shakeT*8)*6*Math.exp(-shakeT*.15);
+    wrap.style.marginLeft=sx+'px';
+    if(shakeT>15){ shaking=false; wrap.style.marginLeft='0'; }
+  }
+  requestAnimationFrame(animLoop);
+}
+
+// ─────────────────────────────────────────────
+// Sprite-sheet engine (for render:"sprite" pets)
+// ─────────────────────────────────────────────
+const sprite = (() => {
+  const canvas = document.getElementById('pet-canvas');
+  const ctx = canvas.getContext('2d');
+
+  let active = false;     // is a sprite pet currently shown?
+  let img = null;         // loaded sheet Image
+  let def = null;         // catalog entry {frameWidth,frameHeight,scale,smooth,states,...}
+  let baseState = 'idle'; // reaction-driven animation
+  let walkState = null;   // 'running-left'/'running-right' while wandering (overrides base)
+  let shown = 'idle';     // the state actually being drawn
+  let frames = [];        // [{x,y}, …] for the current state
+  let frameIdx = 0;
+  let frameDur = 150;     // ms per frame for current state
+  let acc = 0;            // ms accumulated
+  let lastTs = 0;
+  let loopsLeft = Infinity; // finite-iteration states revert to idle when done
+
+  // Resolve a state def (row form or explicit frames) → frames + timing.
+  // Missing walk states fall back to 'running', then 'idle'.
+  function framesFor(name){
+    const states = def && def.states || {};
+    const s = states[name]
+      || (name.startsWith('running-') ? states.running : null)
+      || states.idle;
+    if(!s) return { list:[{x:0,y:0}], dur:150, iter:Infinity };
+    const dur = Number(s.durationMs) || 150;
+    const iter = Number(s.iterations) > 0 ? Number(s.iterations) : Infinity;
+    if(Array.isArray(s.frames)) return { list:s.frames, dur, iter };
+    const n = Number(s.frames) || 1, row = Number(s.row) || 0;
+    const list = [];
+    for(let i=0;i<n;i++) list.push({ x:i*def.frameWidth, y:row*def.frameHeight });
+    return { list, dur, iter };
+  }
+
+  function apply(){
+    const next = walkState || baseState;
+    if(next === shown && frames.length) return;
+    shown = next;
+    const f = framesFor(next);
+    frames = f.list; frameDur = f.dur; frameIdx = 0; acc = 0; loopsLeft = f.iter;
+  }
+
+  function setState(name){ baseState = name; if(active) apply(); }
+  function setWalk(state){ walkState = state === 'idle' ? null : state; if(active) apply(); }
+
+  function load(entry){
+    def = entry; active = true;
+    document.body.classList.add('sprite-mode');
+    // High-res sheets (like the OpenPets pup) downscale better smoothed;
+    // chunky pixel-art packs want nearest-neighbour.
+    ctx.imageSmoothingEnabled = !!entry.smooth;
+    ctx.imageSmoothingQuality = 'high';
+    canvas.style.imageRendering = entry.smooth ? 'auto' : 'pixelated';
+    const im = new Image();
+    im.onload = () => { img = im; shown = ''; apply(); };
+    im.onerror = () => { console.warn('[pet] sheet failed to load:', entry.sheetUrl); unload(); };
+    im.src = entry.sheetUrl;
+  }
+
+  function unload(){
+    active = false; img = null; def = null; walkState = null;
+    document.body.classList.remove('sprite-mode');
+  }
+
+  // Called every frame from animLoop with the shared float offset.
+  function draw(ts, bobY){
+    if(!active || !img || !def || !frames.length) return;
+    if(lastTs){ acc += ts - lastTs; }
+    lastTs = ts;
+    while(acc >= frameDur){
+      acc -= frameDur;
+      frameIdx++;
+      if(frameIdx >= frames.length){
+        frameIdx = 0;
+        if(--loopsLeft <= 0){ baseState = 'idle'; apply(); }
+      }
+    }
+
+    const fw = def.frameWidth, fh = def.frameHeight, scale = def.scale || 4;
+    const dw = fw*scale, dh = fh*scale;
+    const dx = (canvas.width - dw)/2;
+    const dy = (canvas.height - dh)/2 + bobY;
+    const fr = frames[frameIdx] || frames[0];
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img, fr.x, fr.y, fw, fh, dx, dy, dw, dh);
+  }
+
+  return { setState, setWalk, load, unload, draw, isActive: () => active };
+})();
+
+// ─────────────────────────────────────────────
+// Reactions → mood (SVG pet) + animation (sprite pet)
+// ─────────────────────────────────────────────
+// Webhook `status` values (reactions) — both the legacy four and the richer
+// OpenPets-inspired set — are normalised here.
+//   reaction → mood : drives the SVG pet's face/antenna/ring.
+//   reaction → animation : drives which sprite-sheet row plays.
+const reactionToMood = {
+  idle:'idle', waiting:'idle', testing:'focused', thinking:'focused',
+  running:'focused', working:'focused', editing:'focused', waving:'happy',
+  done:'happy', success:'happy', celebrating:'happy', error:'error',
+};
+const reactionToAnimation = {
+  idle:'idle', thinking:'review', working:'running', editing:'running',
+  running:'running', testing:'waiting', waiting:'waiting', waving:'waving',
+  done:'jumping', success:'jumping', celebrating:'jumping', error:'failed',
+};
+const moodColors={ happy:'#00e5a0', focused:'#6c63ff', error:'#ff5c7c', idle:'rgba(255,255,255,.4)' };
+
+// React to an agent reaction: set face/antenna AND the sprite animation.
+function setPetReaction(reaction){
+  const m = reactionToMood[reaction] || 'idle';
+  setPetMood(m);
+  sprite.setState(reactionToAnimation[reaction] || 'idle');
+}
+function setPetMood(m){
+  mood=m;
+  antBall.style.background=moodColors[m]||moodColors.idle;
+  antBall.style.boxShadow=`0 0 10px ${moodColors[m]||'#888'},0 0 20px ${(moodColors[m]||'#888')}44`;
+  const happy=document.getElementById('mouth-happy');
+  const sad=document.getElementById('mouth-sad');
+  happy.style.opacity=m==='error'?0:1;
+  sad.style.opacity=m==='error'?1:0;
+  petRing.style.display = m==='focused' ? 'block' : 'none';
+  if(m==='error') wobble();
+}
+function wobble(){ shaking=true; shakeT=0; }
+
+// ─────────────────────────────────────────────
+// Status badge (OpenPets-style): a small chip showing the current reaction.
+// Busy reactions stick around (up to 2 min); terminal ones fade after a beat.
+// ─────────────────────────────────────────────
+const statusIcon = {
+  running:'⚙️', done:'✅', error:'🚨', idle:'😴',
+  thinking:'🤔', working:'🛠️', editing:'✏️', testing:'🧪',
+  waiting:'⏳', waving:'👋', success:'🎉', celebrating:'🥳',
+};
+const busyReactions = new Set(['thinking','working','editing','running','testing','waiting']);
+let badgeTimer = null;
+
+function setStatusBadge(reaction){
+  if(badgeTimer) clearTimeout(badgeTimer);
+  if(reaction === 'idle'){ statusBadge.classList.remove('show'); return; }
+  statusBadge.textContent = statusIcon[reaction] || '📡';
+  statusBadge.classList.add('show');
+  badgeTimer = setTimeout(()=>statusBadge.classList.remove('show'),
+    busyReactions.has(reaction) ? 120000 : 8000);
+}
+
+// ─────────────────────────────────────────────
+// Sound (WebAudio — no assets). Soft two-note chirps; mutable from the menu.
+// ─────────────────────────────────────────────
+let muted = localStorage.getItem('petMuted') === '1';
+let audioCtx = null;
+function chime(kind){
+  if(muted) return;
+  try{
+    audioCtx = audioCtx || new AudioContext();
+    const t = audioCtx.currentTime;
+    const notes = kind === 'alert' ? [[880,0],[659,.16],[880,.32]] : [[659,0],[880,.11]];
+    for(const [f,dt] of notes){
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001, t+dt);
+      g.gain.exponentialRampToValueAtTime(0.13, t+dt+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+dt+0.26);
+      o.start(t+dt); o.stop(t+dt+0.3);
+    }
+  }catch{ /* audio unavailable — stay silent */ }
+}
+function toggleMute(){
+  muted = !muted;
+  localStorage.setItem('petMuted', muted ? '1' : '0');
+  document.getElementById('mute-btn').textContent = muted ? '🔊 Unmute' : '🔇 Mute';
+}
+
+// ─────────────────────────────────────────────
+// Play: hearts, delight, petting, double-click, toss
+// ─────────────────────────────────────────────
+function showHearts(n=3){
+  for(let i=0;i<n;i++){
+    const h = document.createElement('div');
+    h.className = 'heart';
+    h.textContent = '❤';
+    h.style.left = (30 + Math.random()*80) + 'px';
+    h.style.bottom = (95 + Math.random()*30) + 'px';
+    h.style.animationDelay = (i*120) + 'ms';
+    wrap.appendChild(h);
+    setTimeout(()=>h.remove(), 1500 + i*120);
+  }
+}
+
+const purrLines = ["Purrrr~ 💕","Hehe, that tickles!","More pets please!","Best human 🥰","Wheee!"];
+function delight(line){
+  sprite.setState('jumping');
+  setPetMood('happy');
+  showHearts(3);
+  speak(line || purrLines[Math.floor(Math.random()*purrLines.length)], 2600);
+  chime('happy');
+}
+
+// Petting: stroke back and forth over the pet a few times → purr + hearts.
+let petLastX = null, petLastDir = 0, petDirChanges = 0, petResetTimer = null, lastPetReact = 0;
+wrap.addEventListener('pointermove', e=>{
+  if(dragging) return;
+  if(petLastX !== null){
+    const d = Math.sign(e.clientX - petLastX);
+    if(d && petLastDir && d !== petLastDir) petDirChanges++;
+    if(d) petLastDir = d;
+  }
+  petLastX = e.clientX;
+  clearTimeout(petResetTimer);
+  petResetTimer = setTimeout(()=>{ petDirChanges = 0; petLastDir = 0; petLastX = null; }, 900);
+  if(petDirChanges >= 4 && Date.now() - lastPetReact > 6000){
+    petDirChanges = 0;
+    lastPetReact = Date.now();
+    delight();
+  }
+});
+
+wrap.addEventListener('dblclick', ()=>delight());
+
+// ─────────────────────────────────────────────
+// Attention mode: a session is waiting on the user — call out repeatedly
+// (bubble + wave + chime + window hop) until acknowledged or resolved.
+// ─────────────────────────────────────────────
+const attentionLines = [
+  "Hey! A session needs your input! 🔔",
+  "Psst — your agent is waiting on you!",
+  "Knock knock! Approval needed 👀",
+  "Don't leave me hanging — input needed!",
+];
+let attention = false, attentionInterval = null, attentionN = 0;
+function attentionCallOut(){
+  if(!attention) return;
+  speak(attentionLines[attentionN++ % attentionLines.length], 5200);
+  sprite.setState('waving');
+  wobble();
+  chime('alert');
+  if(window.petAPI && window.petAPI.hop) window.petAPI.hop();
+}
+function enterAttention(){
+  if(attention) return;
+  attention = true;
+  attentionN = 0;
+  attentionCallOut();
+  attentionInterval = setInterval(attentionCallOut, 9000);
+}
+function exitAttention(){
+  if(!attention) return;
+  attention = false;
+  clearInterval(attentionInterval);
+  attentionInterval = null;
+}
+
+// ─────────────────────────────────────────────
+// Real event handler (from main process)
+// ─────────────────────────────────────────────
+function handleRealEvent(ev){
+  const status = ev.status || 'idle';
+  // Fall back to a rotating one-liner from the reaction's pool if no message.
+  const message = ev.message || pickReactionMessage(status);
+  setPetReaction(status);
+  setStatusBadge(status);
+  if(message) speak(message, 6000);
+  if(status === 'waiting') enterAttention();
+  else exitAttention();
+}
+
+if(window.petAPI && window.petAPI.onPetEvent){
+  window.petAPI.onPetEvent(handleRealEvent);
+}
+
+// ─────────────────────────────────────────────
+// Ambient wander: main moves the window; we play the matching walk animation.
+// ─────────────────────────────────────────────
+if(window.petAPI && window.petAPI.onWalk){
+  window.petAPI.onWalk(state => sprite.setWalk(state));
+}
+
+// ─────────────────────────────────────────────
+// Pet catalog / switching
+// ─────────────────────────────────────────────
+let petCatalog = [];     // [{id,name,render,sheetUrl,...}]
+let currentPetId = null;
+
+function applyPet(id){
+  const entry = petCatalog.find(p => p.id === id);
+  if(!entry) return;
+  currentPetId = id;
+  if(entry.render === 'sprite'){
+    sprite.load(entry);              // shows canvas, hides SVG (via body class)
+    sprite.setState(reactionToAnimation[mood==='focused'?'running':mood==='error'?'error':mood==='happy'?'success':'idle'] || 'idle');
+  } else {
+    sprite.unload();                 // back to the SVG pet
+  }
+}
+
+function cyclePet(){
+  if(petCatalog.length < 2) return;
+  const i = petCatalog.findIndex(p => p.id === currentPetId);
+  const next = petCatalog[(i+1) % petCatalog.length];
+  if(window.petAPI && window.petAPI.selectPet) window.petAPI.selectPet(next.id); // persist + tray
+  applyPet(next.id);
+}
+
+async function initPets(){
+  if(!window.petAPI || !window.petAPI.listPets) return;
+  try{
+    petCatalog = await window.petAPI.listPets() || [];
+    const sel = await window.petAPI.getSelectedPet();
+    if(sel) applyPet(sel);
+    else if(petCatalog.length) applyPet(petCatalog[0].id);
+  }catch(err){ console.warn('[pet] catalog init failed:', err); }
+}
+// Tray-driven switches.
+if(window.petAPI && window.petAPI.onSelectPet){
+  window.petAPI.onSelectPet(id => applyPet(id));
+}
+
+// ─────────────────────────────────────────────
+// Manual self-test (right-click → Simulate event)
+// ─────────────────────────────────────────────
+const fakeEvents=[
+  {agent:'langchain-agent',status:'thinking', message:'Planning the approach…'},
+  {agent:'crewai-bot',     status:'working',  message:'Editing handler.py…'},
+  {agent:'gemini-agent',   status:'testing',  message:'Running the test suite…'},
+  {agent:'codex-agent',    status:'waiting',  message:'Approval needed'},
+  {agent:'codex-agent',    status:'success',  message:'PR ready for review 🎉'},
+  {agent:'gemini-agent',   status:'error',    message:'Rate limit hit, retrying…'},
+];
+let fakeIdx=0;
+function simulateEvent(){ handleRealEvent(fakeEvents[fakeIdx++ % fakeEvents.length]); }
+
+// ─────────────────────────────────────────────
+// Drag → move the OS window (via petAPI.moveBy)
+// ─────────────────────────────────────────────
+let velX=0, velY=0, lastMoveT=0;
+wrap.addEventListener('pointerdown', e=>{
+  if(e.button!==0) return;
+  dragging=true; dragged=false;
+  velX=0; velY=0; lastMoveT=performance.now();
+  lastPX=e.screenX; lastPY=e.screenY;
+  wrap.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+wrap.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  const dx=e.screenX-lastPX, dy=e.screenY-lastPY;
+  if(Math.abs(dx)>2||Math.abs(dy)>2) dragged=true;
+  if(dx||dy){
+    if(window.petAPI) window.petAPI.moveBy(dx,dy);
+    // Smoothed per-30ms velocity so a quick fling on release tosses the pet.
+    const now=performance.now(), dt=Math.max(now-lastMoveT,1);
+    velX = velX*0.6 + (dx/dt*30)*0.4;
+    velY = velY*0.6 + (dy/dt*30)*0.4;
+    lastMoveT=now;
+    lastPX=e.screenX; lastPY=e.screenY;
+  }
+});
+wrap.addEventListener('pointerup', e=>{
+  if(dragging && dragged && performance.now()-lastMoveT<120 && Math.hypot(velX,velY)>16){
+    if(window.petAPI && window.petAPI.toss) window.petAPI.toss(velX, velY); // fling!
+  }
+  dragging=false;
+  try{wrap.releasePointerCapture(e.pointerId);}catch{}
+});
+wrap.addEventListener('click', e=>{
+  if(dragged){ dragged=false; return; }
+  if(attention){ exitAttention(); speak("Okay okay — it's still waiting for you though! 😸", 3000); return; }
+  speak(idleLine()); wobble(); showHearts(1);
+});
+
+// ─────────────────────────────────────────────
+// Click-through: only interactive while hovering the pet/UI
+// ─────────────────────────────────────────────
+const ctxMenu=document.getElementById('ctx-menu');
+function setInteractive(on){
+  // While the context menu is open the whole window must stay clickable, or the
+  // pointer leaving #pet-wrap turns on click-through and menu clicks fall through.
+  if(!on && ctxMenu.style.display === 'block') return;
+  if(window.petAPI) window.petAPI.setInteractive(on);
+}
+[wrap, bubble, ctxMenu].forEach(el=>{
+  el.addEventListener('mouseenter', ()=>setInteractive(true));
+  el.addEventListener('mouseleave', ()=>setInteractive(false));
+});
+
+// ─────────────────────────────────────────────
+// Context menu
+// ─────────────────────────────────────────────
+wrap.addEventListener('contextmenu', e=>{ e.preventDefault(); ctxMenu.style.cssText=`display:block;left:${e.clientX}px;top:${e.clientY}px`; });
+document.addEventListener('click',()=>closeMenu());
+function closeMenu(){
+  ctxMenu.style.display='none';
+  // The menu may have closed while the pointer was off the pet — drop back to
+  // click-through unless we're still hovering the pet/bubble.
+  if(!wrap.matches(':hover') && !bubble.matches(':hover')) setInteractive(false);
+}
+
+// ─────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────
+function startIdleChatter(){ setInterval(()=>{ if(!isTalking && Math.random()>.6) speak(idleLine(),2800); }, 12000); }
+
+setPetMood('idle');
+scheduleBlink();
+animLoop();
+startIdleChatter();
+initPets();
+if(muted) document.getElementById('mute-btn').textContent = '🔊 Unmute';
+setTimeout(()=>speak("Hey! I'm your\nagent pet 🐾\nI'll watch your sessions!",4500), 600);
+</script>
+</body>
+</html>

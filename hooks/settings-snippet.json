@@ -1,0 +1,35 @@
+{
+  "_comment": "Merge this `hooks` block into your Claude Code settings.json (~/.claude/settings.json for all projects, or .claude/settings.json in a project). Adjust the path to claude-code-hook.js to where you cloned this repo. Use forward slashes; on Windows they work fine. Every hook is `async: true` so it never adds latency to Claude Code.",
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          { "type": "command", "command": "node D:/pets/hooks/claude-code-hook.js", "async": true }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node D:/pets/hooks/claude-code-hook.js", "async": true }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node D:/pets/hooks/claude-code-hook.js", "async": true }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node D:/pets/hooks/claude-code-hook.js", "async": true }
+        ]
+      }
+    ]
+  }
+}
