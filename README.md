@@ -37,7 +37,8 @@ The packaged app stores your editable files per-user under `%APPDATA%\Agent Pet\
   picks them up without a restart). Packs here shadow built-in packs with the same id.
 
 The tray menu also has **Start with Windows** to auto-launch the pet at login. The Python
-SDK and Claude Code hook ship alongside the installed app in `resources\integrations\`.
+SDK and the agent hooks (Claude Code, Codex, generic sender) ship alongside the installed
+app in `resources\integrations\`.
 
 ## Run it from source (dev)
 
@@ -155,7 +156,7 @@ Restart the app after editing the config.
 | `pet.config.json`    | port + log-tail rules                                            |
 | `pets/`              | switchable pet packs, including SVG and sprite-sheet pets        |
 | `sdk/`               | Python SDK (`agent_pet`) + LangChain/CrewAI callbacks — see [sdk/README.md](sdk/README.md) |
-| `hooks/`             | Claude Code integration — see [hooks/README.md](hooks/README.md) |
+| `hooks/`             | Agent integrations (Claude Code, Codex, generic sender) — see [hooks/README.md](hooks/README.md) |
 | `tools/`             | dev utilities: placeholder/sprite generators, `make-icon.js` (app icon) |
 | `desktop-pet.html`   | original browser prototype (reference only)                     |
 
@@ -165,6 +166,10 @@ Restart the app after editing the config.
   and drop-in **LangChain** (`PetCallbackHandler`) + **CrewAI** callbacks. Stdlib-only core.
 - **Claude Code** (this very tool) → [`hooks/`](hooks/README.md): the pet reacts when your
   Claude Code sessions start, work, finish, or need your input.
+- **OpenAI Codex** (CLI + VS Code extension) → [`hooks/`](hooks/README.md#openai-codex--agent-pet-hooks):
+  the pet waves, works, calls for you when Codex needs approval, and celebrates along with your Codex sessions.
+- **Any other agent/tool** → [`hooks/pet-notify.js`](hooks/README.md#connect-any-agent): a
+  one-line sender (no Python) so Cursor, Gemini CLI, CI steps, or your own scripts can drive the pet.
 - **Custom pets** → [`pets/`](pets/README.md): add a `pets/<id>/pet.json` pack, optionally
   with a sprite sheet, then restart and switch from the tray.
 
