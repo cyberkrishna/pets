@@ -702,7 +702,18 @@ function setInteractive(on){
 // ─────────────────────────────────────────────
 // Context menu
 // ─────────────────────────────────────────────
-wrap.addEventListener('contextmenu', e=>{ e.preventDefault(); ctxMenu.style.cssText=`display:block;left:${e.clientX}px;top:${e.clientY}px`; });
+wrap.addEventListener('contextmenu', e=>{
+  e.preventDefault();
+  // Show first (display:none has no size), then clamp into the window so the
+  // menu never extends past the bottom/right edge — the pet usually sits at
+  // the very bottom of the window, where a menu at the cursor would be clipped.
+  ctxMenu.style.display='block';
+  const x = Math.max(4, Math.min(e.clientX, window.innerWidth  - ctxMenu.offsetWidth  - 4));
+  const y = Math.max(4, Math.min(e.clientY, window.innerHeight - ctxMenu.offsetHeight - 4));
+  ctxMenu.style.left = x + 'px';
+  ctxMenu.style.top  = y + 'px';
+  setInteractive(true);
+});
 document.addEventListener('click',()=>closeMenu());
 function closeMenu(){
   ctxMenu.style.display='none';

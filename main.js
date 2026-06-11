@@ -193,21 +193,51 @@ function selectPet(id) {
 const WIN_W = 220;
 const WIN_H = 320;
 
+// Move the window WITHOUT drifting: setBounds pins the size too — at non-100%
+// display scaling, bare setPosition can resize/drift the window through
+// DIP↔physical-pixel rounding (the "pet sinks lower every bounce" bug).
+function setWinPos(x, y) {
+  if (!win || win.isDestroyed()) return;
+  win.setBounds({ x: Math.round(x), y: Math.round(y), width: WIN_W, height: WIN_H });
+}
+
+// Reserve this many px above the *physical* screen bottom when the taskbar is
+// auto-hidden. A docked taskbar is already carved out of `workArea`, so we only
+// need this when the OS reports the full screen height as usable.
+const FLOOR_MARGIN = 56;
+
+// Bottom limit (window-origin Y) for the pet on whatever display contains the
+// given center, plus that display's horizontal bounds. This is the single source
+// of truth for "how low can the pet go" — drag, toss, wander, and initial
+// placement all clamp through it so the pet can never sink below the taskbar.
+function floorFor(centerX, centerY) {
+  const { workArea, bounds } = screen.getDisplayNearestPoint({ x: centerX, y: centerY });
+  const workBottom = workArea.y + workArea.height;
+  const screenBottom = bounds.y + bounds.height;
+  // Docked taskbar: workBottom < screenBottom, so the bar is already excluded —
+  // rest right on the work-area floor. Auto-hide: workBottom === screenBottom,
+  // so reserve FLOOR_MARGIN ourselves or the pet hides behind the hidden bar.
+  const reserve = screenBottom - workBottom > 0 ? 0 : FLOOR_MARGIN;
+  return {
+    workArea,
+    floor: workBottom - reserve - WIN_H,
+    minX: workArea.x,
+    maxX: workArea.x + workArea.width - WIN_W,
+  };
+}
+
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
-  // Default: bottom-right of the usable screen, with a small margin.
+  // Default: bottom-right of the usable screen, resting on the taskbar-aware floor.
   let x = workArea.x + workArea.width - WIN_W - 24;
-  let y = workArea.y + workArea.height - WIN_H - 24;
+  let y = floorFor(x + WIN_W / 2, workArea.y + workArea.height).floor;
 
   // Restore the last dragged position, clamped into the work area of the
   // display it's nearest to (OpenPets-style) so the pet can never come back
   // off-screen after a resize, monitor change, or wild drag.
   const saved = loadSavedPosition();
   if (saved) {
-    const center = { x: saved.x + WIN_W / 2, y: saved.y + WIN_H / 2 };
-    const { workArea: wa } = screen.getDisplayNearestPoint(center);
-    x = Math.min(Math.max(saved.x, wa.x), wa.x + Math.max(0, wa.width - WIN_W));
-    y = Math.min(Math.max(saved.y, wa.y), wa.y + Math.max(0, wa.height - WIN_H));
+    ({ x, y } = clampToWorkArea(saved.x, saved.y));
   }
 
   win = new BrowserWindow({
@@ -245,11 +275,12 @@ function createWindow() {
 // while still guaranteeing a grabbable sliver stays on-screen.
 function clampToWorkArea(x, y, peek = 0) {
   const center = { x: x + WIN_W / 2, y: y + WIN_H / 2 };
-  const { workArea: wa } = screen.getDisplayNearestPoint(center);
+  const { workArea: wa, floor: maxY } = floorFor(center.x, center.y);
   const minX = wa.x - peek;
   const maxX = wa.x + wa.width - WIN_W + peek;
   const minY = wa.y; // never let the title/sprite slide above the top edge
-  const maxY = wa.y + wa.height - WIN_H + peek;
+  // maxY (from floorFor) ignores `peek` vertically so the pet can't be dragged
+  // behind an auto-hide taskbar at the bottom of the screen.
   return {
     x: Math.round(Math.min(Math.max(x, minX), Math.max(minX, maxX))),
     y: Math.round(Math.min(Math.max(y, minY), Math.max(minY, maxY))),
@@ -308,7 +339,7 @@ async function wanderOnce() {
       // The user grabbed the pet mid-stroll — let go immediately.
       if (Date.now() - lastDragTs < 300) return;
       const t = easeInOut(step / steps);
-      win.setPosition(Math.round(startX + (targetX - startX) * t), startY, false);
+      setWinPos(startX + (targetX - startX) * t, startY);
       await new Promise((r) => setTimeout(r, durationMs / steps));
     }
     savePositionSoon();
@@ -333,33 +364,34 @@ function stopToss() {
 function startToss(vx, vy) {
   if (!win || win.isDestroyed()) return;
   stopToss();
+  // Read the position ONCE and integrate in floats from then on. Re-reading
+  // getPosition() every tick accumulates DIP↔pixel rounding drift at non-100%
+  // display scaling — that was the "rests lower after every bounce" bug.
+  const [sx, sy] = win.getPosition();
+  const { floor, minX, maxX } = floorFor(sx + WIN_W / 2, sy + WIN_H / 2);
+  let fx = sx;
+  let fy = Math.min(sy, floor);
   let vX = Math.max(-45, Math.min(45, vx));
   let vY = Math.max(-55, Math.min(55, vy));
   let restTicks = 0;
   sendWalkState('jumping');
   tossTimer = setInterval(() => {
     if (!win || win.isDestroyed()) return stopToss();
-    const [x, y] = win.getPosition();
-    const { workArea } = screen.getDisplayNearestPoint({ x: x + WIN_W / 2, y: y + WIN_H / 2 });
-    const floor = workArea.y + workArea.height - WIN_H;
-    const minX = workArea.x;
-    const maxX = workArea.x + workArea.width - WIN_W;
-
     vY = Math.min(vY + 3, 48); // gravity
-    let nx = x + Math.round(vX);
-    let ny = y + Math.round(vY);
-    if (nx <= minX || nx >= maxX) {
-      nx = Math.max(minX, Math.min(nx, maxX));
+    fx += vX;
+    fy += vY;
+    if (fx <= minX || fx >= maxX) {
+      fx = Math.max(minX, Math.min(fx, maxX));
       vX = -vX * 0.6; // wall bounce
     }
-    if (ny >= floor) {
-      ny = floor;
+    if (fy >= floor) {
+      fy = floor;
       if (Math.abs(vY) > 8) { vY = -vY * 0.45; vX *= 0.7; } // floor bounce
       else { vY = 0; vX *= 0.6; }
     }
-    win.setPosition(nx, ny, false);
+    setWinPos(fx, fy);
 
-    if (ny >= floor && Math.abs(vY) < 1 && Math.abs(vX) < 1 && ++restTicks > 3) {
+    if (fy >= floor && Math.abs(vY) < 1 && Math.abs(vX) < 1 && ++restTicks > 3) {
       stopToss();
       savePositionSoon();
     }
@@ -375,7 +407,7 @@ async function hopWindow() {
   try {
     for (const dy of [-14, -22, -14, 0, -8, -13, -8, 0]) {
       if (!win || win.isDestroyed()) return;
-      win.setPosition(x, y + dy, false);
+      setWinPos(x, y + dy);
       await new Promise((r) => setTimeout(r, 45));
     }
   } finally {
@@ -637,7 +669,7 @@ ipcMain.on('pet-move', (_e, { dx, dy }) => {
   // Clamp the drag so the pet can't be pulled off the visible desktop. A small
   // peek margin keeps the drag feeling free while a grabbable sliver stays on.
   const { x: nx, y: ny } = clampToWorkArea(x + dx, y + dy, 48);
-  win.setPosition(nx, ny);
+  setWinPos(nx, ny);
   savePositionSoon();
 });
 

@@ -3,10 +3,16 @@
 // Registered for SessionStart / UserPromptSubmit / Stop / Notification (see hooks/README.md).
 // Reads the hook event JSON on stdin and POSTs a matching event to the pet.
 // Fire-and-forget: always exits 0 quickly and never blocks Claude Code.
+// On SessionStart, if the pet isn't running it is auto-launched (single-instance
+// lock in the app makes duplicate launches harmless).
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
 
 const PET_URL = process.env.AGENT_PET_URL || 'http://127.0.0.1:7331';
 
+// Resolves true if the pet received the event, false if it's unreachable.
 function post(payload) {
   return new Promise((resolve) => {
     const body = Buffer.from(JSON.stringify(payload));
@@ -14,7 +20,7 @@ function post(payload) {
     try {
       u = new URL(PET_URL + '/event');
     } catch {
-      return resolve();
+      return resolve(false);
     }
     const req = http.request(
       {
@@ -26,14 +32,41 @@ function post(payload) {
       },
       (res) => {
         res.resume();
-        res.on('end', resolve);
+        res.on('end', () => resolve(true));
       }
     );
     req.setTimeout(600, () => req.destroy());
-    req.on('error', () => resolve()); // pet not running — silent no-op
+    req.on('error', () => resolve(false)); // pet not running
     req.write(body);
     req.end();
   });
+}
+
+// Find the pet app: explicit override → installed app → repo build.
+function findPetExe() {
+  const local = process.env.LOCALAPPDATA || '';
+  const candidates = [
+    process.env.AGENT_PET_EXE,
+    path.join(local, 'Programs', 'Agent Pet', 'Agent Pet.exe'),
+    path.join(local, 'Programs', 'agent-pet', 'Agent Pet.exe'),
+    path.join(__dirname, '..', 'dist', 'win-unpacked', 'Agent Pet.exe'),
+  ];
+  return candidates.find((p) => p && fs.existsSync(p)) || null;
+}
+
+function launchPet() {
+  const exe = findPetExe();
+  if (!exe) return false;
+  try {
+    spawn(exe, [], { detached: true, stdio: 'ignore' }).unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function delay(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 // Map a hook event to a pet event.
@@ -76,8 +109,17 @@ process.stdin.on('end', async () => {
     process.exit(0); // malformed input — do nothing, don't break Claude Code
   }
   const ev = toPetEvent(hook);
-  if (ev) await post(ev);
+  if (ev) {
+    const delivered = await post(ev);
+    // A session just started and the pet isn't up — wake it, then greet it.
+    // Only SessionStart auto-launches: if the user quit the pet mid-session,
+    // other events shouldn't keep resurrecting it.
+    if (!delivered && hook.hook_event_name === 'SessionStart' && launchPet()) {
+      await delay(3000); // give Electron a moment to boot and bind the port
+      await post(ev);
+    }
+  }
   process.exit(0);
 });
-// Safety: never hang the host if stdin never closes.
-setTimeout(() => process.exit(0), 1500);
+// Safety: never hang the host if stdin never closes (or the retry stalls).
+setTimeout(() => process.exit(0), 8000);
