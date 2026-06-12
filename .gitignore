@@ -1,1 +1,27 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Python virtual environments
+venv312/
+venv/
+.venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build output / packaged app
+dist/
+
+# Logs
+*.log
+
+# Claude Code local settings
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# OS junk
+.DS_Store
+Thumbs.db
