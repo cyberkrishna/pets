@@ -79,6 +79,12 @@ function toPetEvent(h) {
       const p = (h.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 80);
       return { agent, status: 'working', message: p ? `Working on: ${p}` : 'Working…', emoji: '🛠️' };
     }
+    case 'PostToolUse': {
+      // Fires after a tool finishes — including right after you approve a
+      // permission prompt. Without this the pet stays stuck on "waiting".
+      const tool = (h.tool_name || '').trim();
+      return { agent, status: 'working', message: tool ? `Working… (${tool})` : 'Working…', emoji: '🛠️' };
+    }
     case 'Stop':
       return { agent, status: 'success', message: 'Finished responding ✓', emoji: '✅' };
     case 'Notification': {

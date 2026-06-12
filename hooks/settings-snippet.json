@@ -17,6 +17,13 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node D:/pets/hooks/claude-code-hook.js", "async": true }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
